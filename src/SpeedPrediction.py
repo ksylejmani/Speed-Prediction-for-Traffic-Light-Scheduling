@@ -19,6 +19,9 @@ from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.inspection import PartialDependenceDisplay
 import shap
+import lime
+import lime.lime_tabular
+import matplotlib.patches as mpatches
 
 
 class SpeedPrediction:
@@ -48,6 +51,7 @@ class SpeedPrediction:
         # Uncomment the next line to display 2D partial dependence
         # self.show_2d_partial_dependence(self.model, self.validation_data, ['Longitude', 'Direction'])
         self.explain_with_shap(self.model, self.validation_data)
+        self.explain_with_lime(self.model, self.validation_data)
 
     def load_data(self, path):
         """
@@ -173,6 +177,45 @@ class SpeedPrediction:
         shap_values = explainer.shap_values(X_val)
         shap.initjs()
         shap.summary_plot(shap_values, X_val)
+
+    def explain_with_lime(self, model, validation_set, instance_index=0):
+        """
+        Uses LIME to explain an individual prediction from the validation set
+        and displays it as a plot with a legend explaining the colors.
+        """
+        # Drop the target variable 'Speed' to get feature data
+        X_val = validation_set.drop(columns=['Speed'])
+        feature_names = X_val.columns.tolist()
+        
+        # Create a LIME explainer
+        explainer = lime.lime_tabular.LimeTabularExplainer(
+            training_data=X_val.values, 
+            feature_names=feature_names, 
+            mode="regression"
+        )
+        
+        # Select an instance to explain
+        instance = X_val.iloc[instance_index].values.reshape(1, -1)
+        
+        # Get the model's prediction function
+        predict_fn = lambda x: model.predict(x)
+        
+        # Generate explanation
+        explanation = explainer.explain_instance(instance.flatten(), predict_fn)
+        
+        # Display explanation as a matplotlib plot
+        fig = explanation.as_pyplot_figure()
+        
+        # Add a legend explaining the colors
+        red_patch = mpatches.Patch(color='red', label='Negative Impact on Prediction (Lowers Speed)')
+        green_patch = mpatches.Patch(color='green', label='Positive Impact on Prediction (Increases Speed)')
+        
+        plt.legend(handles=[green_patch, red_patch], loc='best', fontsize=10, frameon=True)
+        plt.title(f'LIME Explanation for Instance {instance_index}')
+        plt.show()
+
+
+
 
 
 if __name__ == "__main__":
