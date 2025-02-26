@@ -22,6 +22,8 @@ import shap
 import lime
 import lime.lime_tabular
 import matplotlib.patches as mpatches
+from alibi.explainers import AnchorTabular
+
 
 
 class SpeedPrediction:
@@ -52,6 +54,7 @@ class SpeedPrediction:
         # self.show_2d_partial_dependence(self.model, self.validation_data, ['Longitude', 'Direction'])
         self.explain_with_shap(self.model, self.validation_data)
         self.explain_with_lime(self.model, self.validation_data)
+        self.explain_with_anchor(self.model, self.validation_data)
 
     def load_data(self, path):
         """
@@ -214,7 +217,64 @@ class SpeedPrediction:
         plt.title(f'LIME Explanation for Instance {instance_index}')
         plt.show()
 
+    def explain_with_anchor(self, model, validation_set, instance_index=0):
+        """
+        Uses Anchor to explain an individual prediction from the validation set
+        and displays the explanation as text and a bar plot.
+        
+        The bar plot visualizes the importance of feature conditions that influenced 
+        the model's decision. Higher precision indicates stronger reliability of 
+        these conditions in making the prediction.
+        """
+        # Drop the target variable 'Speed' to get feature data
+        X_val = validation_set.drop(columns=['Speed'])
+        feature_names = X_val.columns.tolist()
+        
+        # Convert dataset to numpy array
+        X_val_np = X_val.to_numpy()
 
+        # Define the model's prediction function
+        predict_fn = lambda x: model.predict(x)
+
+        # Initialize the Anchor explainer
+        explainer = AnchorTabular(predict_fn, feature_names)
+        explainer.fit(X_val_np)  # Fit with training data
+
+        # Select an instance to explain
+        instance = X_val_np[instance_index].reshape(1, -1)
+
+        # Generate explanation
+        explanation = explainer.explain(instance, threshold=0.95)
+
+        # Print textual explanation
+        print(f"Anchor Explanation for Instance {instance_index}:")
+        print("Conditions (Feature rules that influence prediction):", explanation.anchor)
+        print(f"Precision (Confidence in these conditions): {explanation.precision:.2f}")
+        print(f"Coverage (Proportion of instances similar to this one): {explanation.coverage:.2f}")
+
+        # Extract explanation details for visualization
+        conditions = explanation.anchor
+        precision_values = [explanation.precision] * len(conditions)
+
+        # Create bar plot
+        plt.figure(figsize=(10, 5))
+        bars = plt.barh(conditions, precision_values, color="skyblue", edgecolor="black")
+
+        # Add precision values as text labels
+        for bar in bars:
+            plt.text(bar.get_width() + 0.02, bar.get_y() + bar.get_height()/2, 
+                    f"{bar.get_width():.2f}", va='center', fontsize=10, color="black")
+
+        # Label axes
+        plt.xlabel("Precision (Confidence in condition)")
+        plt.ylabel("Feature Conditions (Rules influencing prediction)")
+        plt.title(f"Anchor Explanation for Instance {instance_index}")
+
+        # Add legend explaining what the plot represents
+        plt.legend(["Higher precision = Stronger feature influence"], loc="lower right", fontsize=9)
+
+        # Display the plot
+        plt.show()
 
 
 
